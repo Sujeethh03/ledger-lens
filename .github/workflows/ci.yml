@@ -13,7 +13,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      # The OCR-fallback test runs real Tesseract against a generated PDF —
+      # deliberately not mocked, so the runner needs the binary.
+      - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
       - run: pip install -e ".[dev]"
       - run: ruff check .
-      - run: mypy . || true   # tighten once the codebase exists
-      - run: pytest
+      - run: pytest -q
+
+  # The golden-QA eval needs an OpenAI key and an indexed corpus, so it runs
+  # locally (python -m evals.run_eval) rather than here. Once a seeded eval
+  # database + repo secret exist, promote it to a required job — that's the
+  # "eval as CI gate" step from the project plan.

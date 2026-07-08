@@ -1,0 +1,10 @@
+{"id": "q1", "question": "What supply chain risks does Apple disclose in its recent quarterly filings?", "category": "answerable", "expected_keywords": ["supply", "component"]}
+{"id": "q2", "question": "What does Apple's management discussion say about revenue trends in its most recent 10-Q?", "category": "answerable", "expected_keywords": ["revenue"]}
+{"id": "q3", "question": "What legal proceedings does Apple mention in its recent quarterly filings?", "category": "answerable", "expected_keywords": ["legal"]}
+{"id": "q4", "question": "What did JPMorgan announce in its recent 8-K filings?", "category": "answerable", "expected_keywords": []}
+{"id": "q5", "question": "How does Apple describe its exposure to foreign exchange or currency risk?", "category": "answerable", "expected_keywords": ["currency", "foreign"]}
+{"id": "q6", "question": "What controls and procedures does Apple report in its recent 10-Q?", "category": "answerable", "expected_keywords": ["controls"]}
+{"id": "q7", "question": "What was Tesla's total revenue in fiscal year 2024?", "category": "unanswerable", "expected_keywords": []}
+{"id": "q8", "question": "What does Microsoft's latest 10-K say about AI competition?", "category": "unanswerable", "expected_keywords": []}
+{"id": "q9", "question": "What dividend did Apple pay in 1997?", "category": "unanswerable", "expected_keywords": []}
+{"id": "q10", "question": "Summarize Apple's stock repurchase activity from its recent quarterly filings.", "category": "answerable", "expected_keywords": ["repurchase"]}
