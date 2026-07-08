@@ -54,6 +54,17 @@ what's there or explicitly note in PROGRESS.md why a decision changed.
 - **Metrics before resume bullets.** Every "X%" placeholder in the dossier's resume-bullet section
   gets replaced with a number measured from this repo's own eval run — never estimated.
 
+## Datastore & model decisions (locked in 2026-07-09)
+
+- **Relational + vector store:** PostgreSQL + `pgvector` — one datastore, not a separate vector DB.
+  Locally: Homebrew Postgres 17, `ledgerlens` role/database, `pgvector` 0.8.4 extension enabled.
+- **Graph store:** Neo4j (M4, not installed yet).
+- **Embedding model:** OpenAI `text-embedding-3-small` (1536 dims — matches `doc_chunks.embedding
+  VECTOR(1536)` already in the migration; don't change one without the other).
+- **Chat/completion model:** OpenAI, cost-tiered — cheaper model (e.g. `gpt-4o-mini`) for simple
+  agent steps, stronger model (e.g. `gpt-4o`) reserved for synthesis/guardrail reasoning. Requires
+  `OPENAI_API_KEY` in `.env` once M3/M5 need it — not needed for M1 ingestion.
+
 ## Conventions
 
 - Python, FastAPI (async), SQLAlchemy + Alembic migrations, Celery + Redis for ingestion workers.
