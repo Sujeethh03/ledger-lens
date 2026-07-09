@@ -44,12 +44,23 @@ def _run_graph_lookups(lookups: list[dict]) -> list:
     hits = []
     for lookup in lookups:
         try:
-            if lookup["kind"] == "companies_discussing":
+            kind = lookup["kind"]
+            if kind == "companies_discussing":
                 hits.extend(graph_agent.companies_discussing(lookup["arg"]))
-            elif lookup["kind"] == "topics_for_company":
+            elif kind == "topics_for_company":
                 hits.extend(graph_agent.topics_for_company(lookup["arg"]))
-            elif lookup["kind"] == "shared_topics":
+            elif kind == "shared_topics":
                 hits.extend(graph_agent.companies_sharing_topics())
+            elif kind == "drugs_interacting_with":
+                hits.extend(graph_agent.drugs_interacting_with(lookup["arg"]))
+            elif kind == "drugs_treating":
+                hits.extend(graph_agent.drugs_treating(lookup["arg"]))
+            elif kind == "treats_and_interacts":
+                hits.extend(
+                    graph_agent.drugs_treating_condition_interacting_with(
+                        lookup["arg"], lookup.get("arg2", "")
+                    )
+                )
         except Exception as exc:
             log.warning("graph_lookup_failed", kind=lookup.get("kind"), error=str(exc))
     return hits
