@@ -5,6 +5,7 @@ Endpoints:
     GET  /readyz                        readiness — real DB + Redis checks
     GET  /metrics                       Prometheus scrape
     POST /api/v1/ingest/sec/{cik}       enqueue async SEC ingestion -> 202 + task id
+    POST /api/v1/ingest/drug/{name}     enqueue async openFDA label ingestion -> 202 + task id
     GET  /api/v1/tasks/{task_id}        Celery task status/result
     GET  /api/v1/documents              documents + ingestion_status (drift/OCR visible here)
     POST /api/v1/query                  full agent pipeline -> cited answer
@@ -95,6 +96,20 @@ def trigger_sec_ingest(cik: str, limit: int = 5):
 
     result = ingest_company_task.delay(cik, limit=limit)
     log.info("ingest_enqueued", cik=cik, task_id=result.id)
+    return IngestResponse(task_id=result.id)
+
+
+@app.post("/api/v1/ingest/drug/{drug_name}", status_code=202, response_model=IngestResponse)
+def trigger_drug_ingest(drug_name: str, limit: int = 3):
+    if os.environ.get("INGEST_ENABLED", "1") != "1":
+        raise HTTPException(status_code=503, detail="Ingestion is disabled in this deployment (read-only demo)")
+    name = drug_name.strip()
+    if not name or len(name) > 100 or not all(c.isalnum() or c in " -" for c in name):
+        raise HTTPException(status_code=422, detail="Drug name must be alphanumeric (spaces/hyphens allowed)")
+    from ingestion.tasks import ingest_drug_task
+
+    result = ingest_drug_task.delay(name, limit=limit)
+    log.info("drug_ingest_enqueued", drug=name, task_id=result.id)
     return IngestResponse(task_id=result.id)
 
 

@@ -39,6 +39,20 @@ def test_ingest_enqueues_task():
     mock_delay.assert_called_once_with("320193", limit=3)
 
 
+def test_drug_ingest_rejects_bad_names():
+    assert client.post("/api/v1/ingest/drug/DROP TABLE;--").status_code == 422
+    assert client.post("/api/v1/ingest/drug/%20%20").status_code == 422
+
+
+def test_drug_ingest_enqueues_task():
+    with patch("ingestion.tasks.ingest_drug_task.delay") as mock_delay:
+        mock_delay.return_value.id = "fake-drug-task"
+        response = client.post("/api/v1/ingest/drug/warfarin?limit=2")
+    assert response.status_code == 202
+    assert response.json() == {"task_id": "fake-drug-task", "status": "queued"}
+    mock_delay.assert_called_once_with("warfarin", limit=2)
+
+
 def test_query_returns_503_without_api_key(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     response = client.post("/api/v1/query", json={"question": "What are Apple's risks?"})

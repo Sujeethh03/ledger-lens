@@ -12,7 +12,7 @@ import asyncio
 import structlog
 
 from ingestion.celery_app import app
-from ingestion.pipeline import ingest_company
+from ingestion.pipeline import ingest_company, ingest_drug
 
 log = structlog.get_logger(__name__)
 
@@ -23,6 +23,15 @@ def ingest_company_task(self, cik: str, limit: int = 5) -> dict[str, int]:
         return asyncio.run(ingest_company(cik, limit=limit))
     except Exception as exc:
         log.error("ingest_task_failed", cik=cik, attempt=self.request.retries, error=str(exc))
+        raise self.retry(exc=exc)
+
+
+@app.task(bind=True, max_retries=2, default_retry_delay=60)
+def ingest_drug_task(self, drug_name: str, limit: int = 3) -> dict[str, int]:
+    try:
+        return asyncio.run(ingest_drug(drug_name, limit=limit))
+    except Exception as exc:
+        log.error("ingest_drug_task_failed", drug=drug_name, attempt=self.request.retries, error=str(exc))
         raise self.retry(exc=exc)
 
 
