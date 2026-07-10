@@ -76,6 +76,13 @@ for that URL (the `python -m scripts.ask` steps become `curl -X POST $URL/api/v1
 -H 'content-type: application/json' -d '{"question":"..."}'`). All five arc steps were
 verified live on deploy day, including the graph multi-hop and the refusal.
 
+**Or just open the base URL in a browser**: `GET /` serves a single-file citation-viewer UI
+(`frontend/index.html`, vanilla HTML/JS, served by FastAPI itself — no second deployment).
+Type a question or click a sample chip; every [Cn] in the answer is clickable and jumps to
+the source card showing the actual chunk text, so an interviewer can watch a citation being
+spot-checked. Refusals render as a distinct amber state. `/docs` (Swagger) also works for
+raw API poking.
+
 **Warm it up 10 minutes before the interview** (hit /readyz and one /query). If the cloud
 misbehaves mid-demo: "let me show you on the local stack — same containers" → Path A.
 

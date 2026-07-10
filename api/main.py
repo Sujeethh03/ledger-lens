@@ -1,6 +1,7 @@
 """FastAPI application — the GroundedAI API surface.
 
 Endpoints:
+    GET  /                              single-file citation-viewer UI (frontend/index.html)
     GET  /healthz                       liveness (process is up, nothing else)
     GET  /readyz                        readiness — real DB + Redis checks
     GET  /metrics                       Prometheus scrape
@@ -13,6 +14,7 @@ Endpoints:
 
 import os
 import time
+from pathlib import Path
 
 import structlog
 from dotenv import load_dotenv
@@ -20,7 +22,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request  # noqa: E402
-from fastapi.responses import Response  # noqa: E402
+from fastapi.responses import FileResponse, Response  # noqa: E402
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 from sqlalchemy import select, text  # noqa: E402
@@ -47,6 +49,16 @@ async def observe_requests(request: Request, call_next):
     REQUEST_LATENCY.labels(request.method, path).observe(elapsed)
     log.info("request", method=request.method, path=path, status=response.status_code, duration_ms=round(elapsed * 1000, 1))
     return response
+
+
+FRONTEND_INDEX = Path(__file__).resolve().parent.parent / "frontend" / "index.html"
+
+
+@app.get("/", include_in_schema=False)
+def index():
+    # The UI is one static file served by the same app it queries: no second
+    # deployment, no CORS, and the free-tier service cap stays respected.
+    return FileResponse(FRONTEND_INDEX, media_type="text/html")
 
 
 @app.get("/healthz")
@@ -181,6 +193,10 @@ def query(body: QueryRequest):
                 "year": c.hit.year,
                 "section": c.hit.section,
                 "source_key": c.hit.source_key,
+                # So the UI can show what the citation actually points at;
+                # capped because chunks run ~3000 chars and the answer only
+                # needs enough context to be spot-checked.
+                "snippet": c.hit.text[:700],
             }
             for c in result.citations
         ],

@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GroundedAI — cited answers or refusal</title>
+<style>
+  /* One file, no frameworks, no external requests: the UI is served by the
+     same FastAPI app it queries, so there is nothing extra to deploy or CORS
+     to configure. Dark/light follows the OS preference. */
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1a2233; --muted: #5c6675;
+    --accent: #2456c8; --accent-soft: #e3ebfb; --border: #d9dee7;
+    --refuse-bg: #fdf3e4; --refuse-border: #e0a83f; --refuse-text: #7a5410;
+    --flash: #fff3bf;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10141c; --panel: #1a212e; --text: #e8ecf3; --muted: #97a1b2;
+      --accent: #7da4f5; --accent-soft: #24304a; --border: #2c3648;
+      --refuse-bg: #2e2413; --refuse-border: #a8843a; --refuse-text: #e6c26e;
+      --flash: #3d3a1e;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 780px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 26px; margin: 0; }
+  h1 + p { margin: 4px 0 24px; color: var(--muted); font-size: 14px; }
+  textarea {
+    width: 100%; min-height: 72px; padding: 12px; font: inherit; resize: vertical;
+    color: var(--text); background: var(--panel);
+    border: 1px solid var(--border); border-radius: 10px;
+  }
+  textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  button#ask {
+    padding: 10px 22px; font: inherit; font-weight: 600; cursor: pointer;
+    color: #fff; background: var(--accent); border: 0; border-radius: 10px;
+  }
+  button#ask:disabled { opacity: .5; cursor: default; }
+  .hint { color: var(--muted); font-size: 13px; }
+  .samples { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+  .samples button {
+    font: inherit; font-size: 13px; cursor: pointer; color: var(--accent);
+    background: var(--accent-soft); border: 0; border-radius: 999px; padding: 5px 12px;
+  }
+  section { margin-top: 28px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px;
+  }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+              color: var(--muted); margin: 0 0 10px; }
+  #answer.refused { background: var(--refuse-bg); border-color: var(--refuse-border); }
+  #answer.refused .body { color: var(--refuse-text); font-weight: 500; }
+  .cite {
+    display: inline-block; cursor: pointer; font-size: 12px; font-weight: 700;
+    color: var(--accent); background: var(--accent-soft);
+    border-radius: 6px; padding: 0 6px; margin: 0 2px; text-decoration: none;
+  }
+  .subqueries { margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .source {
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 10px; transition: background .8s;
+  }
+  .source.flash { background: var(--flash); transition: none; }
+  .source .head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .source .head .cite { cursor: default; }
+  .source .meta { color: var(--muted); font-size: 13px; }
+  .source .snippet {
+    margin: 8px 0 0; font-size: 13.5px; color: var(--text);
+    white-space: pre-wrap; max-height: 130px; overflow-y: auto;
+  }
+  .source .key { font-size: 11.5px; color: var(--muted); word-break: break-all; margin-top: 6px; }
+  #status { margin-top: 20px; color: var(--muted); }
+  .spinner {
+    display: inline-block; width: 14px; height: 14px; margin-right: 8px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; vertical-align: -2px; animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error { color: #c04747; }
+</style>
+</head>
+<body>
+<main>
+  <h1>GroundedAI</h1>
+  <p>Every sentence cites a real source chunk or graph fact — or the system refuses.
+     Corpus: FDA drug labels + SEC filings.</p>
+
+  <textarea id="question" maxlength="1000"
+    placeholder="Ask about the drug labels or SEC filings in the corpus…"></textarea>
+  <div class="row">
+    <button id="ask" disabled>Ask</button>
+    <span class="hint">Runs the full agent pipeline (plan → retrieve → synthesize → verify) — usually 10–40s.</span>
+  </div>
+  <div class="samples" id="samples"></div>
+
+  <div id="status" hidden></div>
+
+  <section id="answer" class="panel" hidden>
+    <h2 id="answer-heading">Answer</h2>
+    <div class="body" id="answer-body"></div>
+    <div class="subqueries" id="subqueries"></div>
+  </section>
+
+  <section id="sources" class="panel" hidden>
+    <h2>Sources — check that they really say what the answer claims</h2>
+    <div id="source-list"></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+const SAMPLES = [
+  "What does the warfarin label say about interactions with NSAIDs like ibuprofen?",
+  "Which drugs that treat pain have a labeled interaction with warfarin?",
+  "What supply chain risks does Apple disclose in its filings?",
+  "What is the recommended pediatric dosage of acetaminophen?",
+];
+
+const questionEl = document.getElementById("question");
+const askEl = document.getElementById("ask");
+const statusEl = document.getElementById("status");
+const answerEl = document.getElementById("answer");
+const answerBodyEl = document.getElementById("answer-body");
+const subqueriesEl = document.getElementById("subqueries");
+const sourcesEl = document.getElementById("sources");
+const sourceListEl = document.getElementById("source-list");
+
+// Sample-question chips: clicking one fills the box and asks immediately.
+for (const q of SAMPLES) {
+  const b = document.createElement("button");
+  b.textContent = q;
+  b.addEventListener("click", () => { questionEl.value = q; ask(); });
+  document.getElementById("samples").appendChild(b);
+}
+
+// The API enforces 5..1000 chars; mirror that so the button state explains it.
+questionEl.addEventListener("input", () => {
+  askEl.disabled = questionEl.value.trim().length < 5;
+});
+questionEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!askEl.disabled) ask(); }
+});
+askEl.addEventListener("click", ask);
+
+function setStatus(html, isError) {
+  statusEl.hidden = !html;
+  statusEl.innerHTML = html || "";
+  statusEl.className = isError ? "error" : "";
+}
+
+async function ask() {
+  const question = questionEl.value.trim();
+  askEl.disabled = true;
+  answerEl.hidden = true;
+  sourcesEl.hidden = true;
+  setStatus('<span class="spinner"></span>Planning, retrieving, synthesizing, verifying…');
+
+  // The pipeline makes several LLM calls; allow up to 2 minutes before giving up.
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), 120000);
+  try {
+    const res = await fetch("/api/v1/query", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question }),
+      signal: abort.signal,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail ? JSON.stringify(data.detail) : res.statusText);
+    render(data);
+    setStatus("");
+  } catch (err) {
+    setStatus("Request failed: " + err.message, true);
+  } finally {
+    clearTimeout(timer);
+    askEl.disabled = questionEl.value.trim().length < 5;
+  }
+}
+
+function render(data) {
+  // Build the answer with DOM nodes (never innerHTML on API text) so nothing
+  // in a label or filing can inject markup. [Cn] markers become clickable
+  // chips that jump to the matching source card.
+  answerBodyEl.replaceChildren();
+  answerEl.classList.toggle("refused", data.refused);
+  document.getElementById("answer-heading").textContent =
+    data.refused ? "Refused — not enough verifiable evidence" : "Answer";
+
+  const text = data.answer === "INSUFFICIENT_EVIDENCE"
+    ? "The corpus does not contain evidence to answer this, so no answer is given."
+    : data.answer;
+  const parts = text.split(/(\[C\d+\])/);
+  for (const part of parts) {
+    const m = part.match(/^\[(C\d+)\]$/);
+    if (m) {
+      const a = document.createElement("a");
+      a.className = "cite";
+      a.textContent = m[1];
+      a.href = "#src-" + m[1];
+      a.addEventListener("click", (e) => { e.preventDefault(); revealSource(m[1]); });
+      answerBodyEl.appendChild(a);
+    } else if (part) {
+      answerBodyEl.appendChild(document.createTextNode(part));
+    }
+  }
+
+  subqueriesEl.textContent = data.sub_queries.length
+    ? "Planner sub-queries: " + data.sub_queries.join(" · ")
+    : "";
+  answerEl.hidden = false;
+
+  sourceListEl.replaceChildren();
+  for (const s of data.sources) {
+    const card = document.createElement("div");
+    card.className = "source";
+    card.id = "src-" + s.label;
+
+    const head = document.createElement("div");
+    head.className = "head";
+    const chip = document.createElement("span");
+    chip.className = "cite";
+    chip.textContent = s.label;
+    const title = document.createElement("strong");
+    title.textContent = s.entity;
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    meta.textContent = [s.doc_type, s.year, s.section].filter(Boolean).join(" · ");
+    head.append(chip, title, meta);
+
+    const snippet = document.createElement("p");
+    snippet.className = "snippet";
+    snippet.textContent = s.snippet || "(graph fact — derived from the source ids below)";
+
+    const key = document.createElement("div");
+    key.className = "key";
+    key.textContent = "source_key: " + s.source_key;
+
+    card.append(head, snippet, key);
+    sourceListEl.appendChild(card);
+  }
+  sourcesEl.hidden = data.sources.length === 0;
+}
+
+function revealSource(label) {
+  const card = document.getElementById("src-" + label);
+  if (!card) return;
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+  card.classList.add("flash");
+  setTimeout(() => card.classList.remove("flash"), 900);
+}
+</script>
+</body>
+</html>

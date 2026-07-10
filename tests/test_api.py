@@ -12,6 +12,13 @@ from api.main import app
 client = TestClient(app)
 
 
+def test_index_serves_ui():
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "GroundedAI" in response.text
+
+
 def test_healthz():
     response = client.get("/healthz")
     assert response.status_code == 200

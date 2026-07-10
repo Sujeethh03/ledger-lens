@@ -98,7 +98,12 @@ max, 47 TREATS, 22 INTERACTS_WITH.
    deliberate* limitation after the keyword-fallback experiment measurably hurt top-5
    (see status section above). Dense arm carries full questions; revisit only alongside
    reranking.
-6. **WebSocket streaming + Next.js citation-viewer UI**: dossier frontend scope, not started.
+6. **Frontend**: a deliberate scope-down from the dossier's Next.js + WebSocket plan — a
+   single-file vanilla HTML/JS citation viewer (`frontend/index.html`) is live at `GET /`,
+   served by FastAPI itself. Clickable [Cn] chips jump to source cards with real chunk text
+   (`/api/v1/query` now returns a 700-char `snippet` per source). Rationale: every line must
+   be defensible by a fresher, and the citation guarantee is the thing worth making visible.
+   Streaming + framework UI remain unstarted dossier scope.
 7. **Condition taxonomy is 11 topics** — fine for 9 drugs; revisit if the corpus grows.
 8. **Old commits carry a wrong author email** (`satya@…MacBook-Pro.local`) — they won't count
    toward Sujeeth's GitHub profile. Fixing needs a history rewrite + force push (Sujeeth's
@@ -140,6 +145,9 @@ max, 47 TREATS, 22 INTERACTS_WITH.
   regression tests; synthesis prompt hardened; **eval now 1.00/1.00/0.94** (two identical
   consecutive runs). Lexical keyword-fallback experiment measured, found harmful (q13),
   reverted with the reasoning recorded in `retrieval/hybrid_search.py`. 66 tests green.
+- **2026-07-10 (night)** — **citation-viewer UI shipped**: one vanilla HTML/JS file at
+  `GET /` (see "NOT done" #6 for the scope-down rationale), `snippet` added to query
+  sources, verified locally end-to-end and redeployed to Railway. 67 tests green.
 
 ## Open decisions / deviations from the dossier
 
