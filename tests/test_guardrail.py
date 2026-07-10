@@ -25,3 +25,17 @@ def test_hallucinated_citation_label_is_a_violation():
 def test_insufficient_evidence_refusal_is_valid():
     assert check_citations(INSUFFICIENT, LABELS).ok
     assert check_citations(f"  {INSUFFICIENT}  ", LABELS).ok
+
+
+def test_us_style_abbreviation_does_not_split_sentence():
+    # Regression: "U.S. District" used to split after "U.S.", leaving an
+    # uncited fragment that made fully-cited legal answers refuse (eval q3).
+    answer = "Epic Games, Inc. sued in the U.S. District Court for the Northern District [C1]."
+    assert check_citations(answer, LABELS).ok
+
+
+def test_abbreviation_fix_still_catches_real_uncited_sentence():
+    answer = "The case was heard in the U.S. Supreme Court [C1]. Apple will certainly win."
+    verdict = check_citations(answer, LABELS)
+    assert not verdict.ok
+    assert any("uncited sentence" in v for v in verdict.violations)

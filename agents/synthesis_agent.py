@@ -15,6 +15,8 @@ using ONLY the provided source chunks.
 Return JSON: {"answer": "..."}.
 Hard rules:
 - Every sentence in the answer MUST end with at least one citation like [C1] or [C2][C3].
+- Do NOT spread one cited claim across several sentences with the citation only on the
+  last one — EACH sentence must itself end with its own [Cn], even mid-paragraph.
 - Only cite labels that appear in the provided sources.
 - If the sources do not contain the information needed, say exactly that (with no citation needed
   for that single admission sentence is NOT allowed either — instead return:

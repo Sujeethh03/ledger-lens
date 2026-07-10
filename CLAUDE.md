@@ -61,8 +61,8 @@ Query time: Planner → parallel (Retriever [hybrid+RRF] + Graph [parameterized 
   no LLM) for the same reason: the reliable arm must stay reliable.
 - **Docker/CI/eval-harness are not stretch goals.** They're graded as required baseline.
 - **Metrics before resume bullets.** Every "X%" on the resume comes from this repo's own eval
-  run — never estimated. Current (20-case live run, 2026-07-10): refusal_correctness 0.95,
-  citation_validity 1.00, keyword_coverage 0.88.
+  run — never estimated. Current (20-case live run, 2026-07-10, post guardrail-splitter fix):
+  refusal_correctness 1.00, citation_validity 1.00, keyword_coverage 0.94.
 
 ## Datastore & model decisions (locked in 2026-07-09)
 

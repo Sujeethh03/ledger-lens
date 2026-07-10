@@ -42,6 +42,16 @@ class SearchHit:
     rrf_score: float
 
 
+# NOTE (2026-07-10): a zero-hit lexical fallback (OR-ed query keywords, then a
+# rarity-filtered variant) was implemented, measured, and reverted. Both
+# variants let ts_rank's term-frequency bias (Postgres FTS has no IDF) fill
+# the lexical list with long common-word chunks, and RRF's "present in both
+# arms" boost then displaced the dense arm's correct top hits — eval q13
+# (lisinopril indications) went from 4/5 correct chunks to 0/5. Full-question
+# queries stay dense-carried on purpose; the lexical arm earns its keep on
+# exact rare-token matches under strict websearch semantics.
+
+
 def _fuse(ranked_lists: list[list[uuid.UUID]]) -> dict[uuid.UUID, float]:
     scores: dict[uuid.UUID, float] = {}
     for ranked in ranked_lists:
@@ -54,13 +64,12 @@ def hybrid_search(query: str, embedder: Embedder, top_k: int = DEFAULT_TOP_K) ->
     query_vector = embedder.embed([query])[0]
 
     with get_session() as session:
+        tsquery = func.websearch_to_tsquery("english", query)
         lexical_ids = list(
             session.scalars(
                 select(DocChunk.id)
-                .where(DocChunk.text_tsv.op("@@")(func.websearch_to_tsquery("english", query)))
-                .order_by(
-                    func.ts_rank(DocChunk.text_tsv, func.websearch_to_tsquery("english", query)).desc()
-                )
+                .where(DocChunk.text_tsv.op("@@")(tsquery))
+                .order_by(func.ts_rank(DocChunk.text_tsv, tsquery).desc())
                 .limit(CANDIDATES_PER_ARM)
             )
         )

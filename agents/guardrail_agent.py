@@ -14,9 +14,13 @@ import re
 from dataclasses import dataclass, field
 
 CITATION_RE = re.compile(r"\[C(\d+)\]")
-# Sentence split that won't break on "Inc." / "No. 5" style abbreviations badly
-# enough to matter for a coverage check.
-SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
+# Sentence split for the coverage check. The negative lookbehind keeps
+# single-capital abbreviations ("U.S. District Court", "U.S.A.") from being
+# split into a fragment that then reads as an uncited sentence — that false
+# positive made legal-proceedings answers refuse (eval q3) even though every
+# real sentence was cited. Lowercase abbreviations ("Inc. v.", "No. 5") never
+# split anyway because the next token isn't a capital.
+SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])(?<![A-Z]\.)\s+(?=[A-Z])")
 
 INSUFFICIENT = "INSUFFICIENT_EVIDENCE"
 
