@@ -1,37 +1,77 @@
-# GroundedAI
+# GroundedAI — cited answers over regulated documents, or an honest refusal
 
-**A Verifiable Agentic Retrieval Platform** — ask questions over regulated documents and get
-answers where **every sentence is cited to a real source, or the system refuses**.
+[![CI](https://github.com/Sujeethh03/grounded-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/Sujeethh03/grounded-ai/actions)
+![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)
+[![Live demo](https://img.shields.io/badge/demo-live-brightgreen)](https://api-production-efa5.up.railway.app)
 
-Two document sources prove the architecture is source-agnostic:
+Ask questions over **FDA drug labels** and **SEC filings**. Every sentence in every answer
+cites a real source chunk or knowledge-graph fact — verified by a separate deterministic
+checker — **or the system refuses to answer**. In the drug domain a hallucinated interaction
+isn't just a wrong answer, it's a dangerous one; the whole architecture is built around
+making that impossible to ship.
 
-- **FDA drug labels** (openFDA) — "Which drugs that treat pain have a labeled interaction
-  with warfarin?" → answered from a knowledge graph, with citations. A hallucinated drug
-  interaction isn't a wrong answer, it's a dangerous one — which is exactly why the refusal
-  guarantee exists.
-- **SEC filings** (EDGAR) — 10-K/10-Q/8-K with OCR fallback for scanned exhibits and
-  schema-drift flagging when the SEC changes form structure.
+**▶ Try it: https://api-production-efa5.up.railway.app** — click a sample question, then
+click any `[C1]` citation chip to see the exact label/filing text it points at.
+(Swagger at [`/docs`](https://api-production-efa5.up.railway.app/docs).)
 
-One pipeline serves both: fault-tolerant async ingestion (retry/backoff, rate limiting,
-idempotent re-runs), hybrid retrieval (BM25 + pgvector, RRF fusion), a deliberately small
-Neo4j knowledge graph (5 node types across both domains, parameterized Cypher only), and a
-LangGraph agent pipeline whose deterministic guardrail verifies every citation before an
-answer ships.
+## Measured, not estimated
 
-**Live demo:** https://api-production-efa5.up.railway.app — citation-viewer UI at `/`,
-Swagger at `/docs`.
+Every number below comes from this repo's own 20-case golden-QA eval
+(`python -m evals.run_eval`), run live against real OpenAI models. The harness enforces
+hard gates (refusal ≥ 0.7; citation validity is a tripwire that must be exactly 1.00):
 
-Current status: `PROGRESS.md`. Architecture and conventions: `CLAUDE.md`.
+| metric | score | meaning |
+|---|---|---|
+| refusal_correctness | **1.00** | answers what the corpus supports, refuses what it doesn't (incl. trap questions) |
+| citation_validity | **1.00** | every `[Cn]` resolves to a chunk that was actually retrieved |
+| keyword_coverage | **0.94** | answers contain the facts the gold cases expect |
 
-## Measured (20-case golden QA eval, live run)
+## Why it's interesting to an engineer
 
-refusal_correctness **1.00** · citation_validity **1.00** · keyword_coverage **0.94**
+- **The writer and the checker are different systems.** An LLM drafts the answer; a
+  deterministic guardrail (regex + set membership, no LLM) verifies every sentence carries a
+  valid citation. One revision loop, then refuse — a checker that can't be sweet-talked.
+- **A knowledge graph that earns its place.** Deliberately tiny (5 node types, 2 domains),
+  populated by deterministic lexicon/taxonomy extraction — no LLM anywhere near the graph, so
+  it can't hallucinate structure. It exists for one thing top-k retrieval structurally can't
+  do: whole-corpus joins like *"which drugs that treat pain have a labeled interaction with
+  warfarin?"* (Try it — the answer is a graph fact with provenance.)
+- **One pipeline, two unrelated domains.** Drug labels were added *after* SEC filings as a
+  ~3-file source adapter (fetch + normalize + drift expectations) on an unchanged core —
+  the architecture claim, proven rather than asserted.
+- **Production posture, not a notebook.** Async ingestion via Celery/Redis (idempotent by
+  source version — label revisions replace, never duplicate), retry/backoff + rate limiting
+  per source API, OCR fallback with confidence propagated to chunks, schema-drift detection,
+  Alembic migrations written by hand, structured logs, Prometheus `/metrics`, real dependency
+  checks on `/readyz`, Dockerized, deployed.
+- **Negative results are kept.** A plausible retrieval "improvement" (keyword-OR fallback for
+  the lexical arm) was implemented, caught *reducing* retrieval quality by the eval harness,
+  reverted, and written up in `retrieval/hybrid_search.py` — the eval exists precisely so
+  changes like that can't sneak in on vibes.
+
+## Architecture
+
+```
+openFDA API ─┐                                    ┌─ documents / document_sections (Postgres)
+             ├─ source adapter (fetch+normalize) ─┤   source_type discriminator, meta JSONB
+SEC EDGAR ───┘  retry+backoff, rate limits,       ├─ hybrid index: doc_chunks
+                OCR fallback, schema-drift        │   (tsvector+GIN ∥ pgvector+HNSW → RRF)
+                detection per doc type            └─ Neo4j graph (deterministic extraction)
+
+Query:  Planner ──► Retriever (hybrid+RRF) ─┬─► Synthesis (every sentence cites [Cn])
+                ──► Graph agent (param.     │        │
+                    Cypher only)  ──────────┘        ▼
+                                             Guardrail (deterministic coverage check)
+                                             ok → cited answer      violation → 1 revision
+                                                                    still failing → REFUSE
+```
 
 ## Stack
 
-FastAPI · Celery + Redis · PostgreSQL + pgvector (one store, both retrieval arms) ·
-Neo4j (Drug/Condition + Company/Filing/RiskFactor entities, parameterized-Cypher-only agent
-arm) · LangGraph · OpenAI (embeddings + cost-tiered chat) · Tesseract OCR · Prometheus metrics
+FastAPI · Celery + Redis · PostgreSQL + **pgvector** (one store serves both retrieval arms —
+hybrid search is a SQL query away, no second vector DB to keep in sync) · Neo4j ·
+LangGraph · OpenAI (embeddings + cost-tiered chat) · Tesseract OCR · Alembic · Prometheus ·
+Docker · GitHub Actions CI · Railway
 
 ## Repo map
 
@@ -53,6 +93,7 @@ infra/       Dockerfiles (api, worker, combined-for-Railway), compose, start scr
 
 Each module's header docstring carries the "why" for that layer (start with
 `agents/graph.py` and `retrieval/hybrid_search.py`) — the code is meant to be read.
+Design decisions and honest open items are tracked in `PROGRESS.md`.
 
 ## Quickstart (local)
 
@@ -60,35 +101,35 @@ Each module's header docstring carries the "why" for that layer (start with
 # services: Postgres 17 + pgvector, Redis, Neo4j (brew services start postgresql@17 redis neo4j)
 cp .env.example .env         # add your OPENAI_API_KEY + a real SEC_EDGAR_USER_AGENT
 python3 -m venv .venv && source .venv/bin/activate
-pip install --index-url https://pypi.org/simple -e ".[dev]"
+pip install -e ".[dev]"
 alembic upgrade head
 
-# CLI path — drug labels
+# drug labels
 python -m scripts.ingest_drug warfarin ibuprofen aspirin   # fetch + normalize openFDA labels
-python -m scripts.index                                    # chunk + embed (needs OPENAI_API_KEY)
+python -m scripts.index                                    # chunk + embed
 python -m scripts.load_graph                               # sync Drug/Condition graph to Neo4j
 python -m scripts.ask "What does the warfarin label say about NSAID interactions?"
 python -m scripts.ask "Which drugs that treat pain have a labeled interaction with warfarin?"
 
-# CLI path — SEC filings
-python -m scripts.ingest --cik 320193 --limit 5    # fetch + normalize Apple filings
+# SEC filings — same pipeline, different adapter
+python -m scripts.ingest --cik 320193 --limit 5
 python -m scripts.ask "What supply chain risks does Apple disclose?"
 
-python -m evals.run_eval                           # 20-case golden-QA eval
+python -m evals.run_eval                           # the 20-case eval behind the numbers above
 
-# API path
+# API + async ingestion
 celery -A ingestion.celery_app worker --loglevel=info &
-uvicorn api.main:app --port 8000
-curl -X POST "localhost:8000/api/v1/ingest/drug/lisinopril?limit=2"   # async ingest via queue
-curl -X POST "localhost:8000/api/v1/ingest/sec/1318605?limit=3"
-curl "localhost:8000/api/v1/documents?source_type=drug_label"
-curl -X POST localhost:8000/api/v1/query -H 'content-type: application/json' \
-     -d '{"question": "Which drugs that treat pain interact with warfarin?"}'
+uvicorn api.main:app --port 8000                   # UI at localhost:8000, Swagger at /docs
 ```
 
 ## Tests
 
 ```bash
-pytest -q        # 67 tests; OCR test runs real Tesseract (brew install tesseract)
+pytest -q        # 67 tests, network-free; OCR test runs real Tesseract (brew install tesseract)
 ruff check .
 ```
+
+---
+
+Built solo, end to end — ingestion to UI, migrations to deployment — as a portfolio project
+that can be defended line by line. Questions welcome: sujeeth.godavarthi@gmail.com
