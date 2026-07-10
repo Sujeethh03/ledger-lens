@@ -26,28 +26,31 @@ hard gates (refusal ≥ 0.7; citation validity is a tripwire that must be exactl
 | citation_validity | **1.00** | every `[Cn]` resolves to a chunk that was actually retrieved |
 | keyword_coverage | **0.94** | answers contain the facts the gold cases expect |
 
-## Why it's interesting to an engineer
+## The idea
 
-- **The writer and the checker are different systems.** An LLM drafts the answer; a
-  deterministic guardrail (regex + set membership, no LLM) verifies every sentence carries a
-  valid citation. One revision loop, then refuse — a checker that can't be sweet-talked.
-- **A knowledge graph that earns its place.** Deliberately tiny (5 node types, 2 domains),
-  populated by deterministic lexicon/taxonomy extraction — no LLM anywhere near the graph, so
-  it can't hallucinate structure. It exists for one thing top-k retrieval structurally can't
-  do: whole-corpus joins like *"which drugs that treat pain have a labeled interaction with
-  warfarin?"* (Try it — the answer is a graph fact with provenance.)
-- **One pipeline, two unrelated domains.** Drug labels were added *after* SEC filings as a
-  ~3-file source adapter (fetch + normalize + drift expectations) on an unchanged core —
-  the architecture claim, proven rather than asserted.
-- **Production posture, not a notebook.** Async ingestion via Celery/Redis (idempotent by
-  source version — label revisions replace, never duplicate), retry/backoff + rate limiting
-  per source API, OCR fallback with confidence propagated to chunks, schema-drift detection,
-  Alembic migrations written by hand, structured logs, Prometheus `/metrics`, real dependency
-  checks on `/readyz`, Dockerized, deployed.
-- **Negative results are kept.** A plausible retrieval "improvement" (keyword-OR fallback for
-  the lexical arm) was implemented, caught *reducing* retrieval quality by the eval harness,
-  reverted, and written up in `retrieval/hybrid_search.py` — the eval exists precisely so
-  changes like that can't sneak in on vibes.
+Large language models answer confidently even when they shouldn't. In most apps that's an
+annoyance; over drug labels it's a hazard, and over financial filings it's a liability.
+GroundedAI treats that as the central design problem rather than a footnote: **an answer is
+only allowed to exist if every sentence of it can be traced to a real document.**
+
+It works like a newsroom. One system *writes*: a planner breaks the question down, hybrid
+search (keyword + semantic, fused) pulls real passages from labels and filings, a knowledge
+graph answers the questions retrieval can't — whole-corpus joins like *"which drugs that
+treat pain also interact with warfarin?"* — and a language model drafts an answer from that
+evidence, citing a source for every sentence. A completely separate system *fact-checks*:
+a deterministic verifier (no AI involved) confirms that every citation points at a passage
+that was actually retrieved. A draft that fails gets one chance to fix itself; if it fails
+again, the system refuses to answer — and says so plainly. Refusing is a feature here,
+not an error state.
+
+Underneath sits real infrastructure, not a notebook: asynchronous ingestion workers with
+retry, rate-limiting, and OCR fallback; idempotent updates (a revised drug label replaces
+its old version, never duplicates it); schema-drift detection for when a source quietly
+changes shape; hand-written database migrations; structured logs, metrics, and health
+checks; Docker, CI, and a cloud deployment you can click right now. And because claims
+need receipts, the project grades itself: a golden-question eval suite produced every
+number in the table above — including one experiment it caught making things *worse*,
+which was reverted and documented in the code.
 
 ## Architecture
 
