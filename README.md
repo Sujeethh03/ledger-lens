@@ -18,17 +18,41 @@ Neo4j knowledge graph (5 node types across both domains, parameterized Cypher on
 LangGraph agent pipeline whose deterministic guardrail verifies every citation before an
 answer ships.
 
+**Live demo:** https://api-production-efa5.up.railway.app — citation-viewer UI at `/`,
+Swagger at `/docs`.
+
 Current status: `PROGRESS.md`. Architecture and conventions: `CLAUDE.md`.
 
 ## Measured (20-case golden QA eval, live run)
 
-refusal_correctness **0.95** · citation_validity **1.00** · keyword_coverage **0.88**
+refusal_correctness **1.00** · citation_validity **1.00** · keyword_coverage **0.94**
 
 ## Stack
 
 FastAPI · Celery + Redis · PostgreSQL + pgvector (one store, both retrieval arms) ·
 Neo4j (Drug/Condition + Company/Filing/RiskFactor entities, parameterized-Cypher-only agent
 arm) · LangGraph · OpenAI (embeddings + cost-tiered chat) · Tesseract OCR · Prometheus metrics
+
+## Repo map
+
+```
+ingestion/   source adapters (fetch_edgar, fetch_openfda + normalizers), schema-drift
+             detection, OCR fallback, Celery tasks, deterministic graph extraction/loading
+retrieval/   chunking, embeddings (Protocol-typed), hybrid search (BM25 ∥ pgvector → RRF),
+             indexer
+agents/      query-time LangGraph pipeline: planner → retriever + graph agent (parameterized
+             Cypher) → synthesis → deterministic guardrail; llm.py is the JSON-mode harness
+db/          SQLAlchemy models, session, Alembic migrations (hand-written)
+api/         FastAPI app: query, async ingest, task status, health/metrics; serves the UI
+frontend/    index.html — the whole UI, one dependency-free file served by the API at /
+evals/       golden_qa.jsonl (20 cases) + deterministic harness with CI gates
+scripts/     CLI entry points (ingest, ingest_drug, index, load_graph, ask, search)
+tests/       pytest suite (network-free; OCR test runs real Tesseract)
+infra/       Dockerfiles (api, worker, combined-for-Railway), compose, start script
+```
+
+Each module's header docstring carries the "why" for that layer (start with
+`agents/graph.py` and `retrieval/hybrid_search.py`) — the code is meant to be read.
 
 ## Quickstart (local)
 
@@ -65,6 +89,6 @@ curl -X POST localhost:8000/api/v1/query -H 'content-type: application/json' \
 ## Tests
 
 ```bash
-pytest -q        # 64 tests; OCR test runs real Tesseract (brew install tesseract)
+pytest -q        # 67 tests; OCR test runs real Tesseract (brew install tesseract)
 ruff check .
 ```

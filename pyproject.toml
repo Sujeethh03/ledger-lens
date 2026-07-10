@@ -40,7 +40,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["ingestion", "retrieval", "agents", "mcp_server", "mcp_server.tools", "api", "db", "evals"]
+packages = ["ingestion", "retrieval", "agents", "api", "db", "evals", "scripts"]
 
 [tool.ruff]
 line-length = 100
